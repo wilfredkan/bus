@@ -337,7 +337,7 @@ async function loadAllStops() {
     lon: parseFloat(s.long),
   }));
 
-  const ctbStops = (ctbRes.data || []).map((s) => ({
+  const ctbStops = (Array.isArray(ctbRes) ? ctbRes : ctbRes.data || []).map((s) => ({
     // 城巴 API 的站點 ID 欄位通常為 stop_id 或 stop
     //const stopId = s.stop_id || s.stop; 
     key: `CTB-${s.stop}`,
