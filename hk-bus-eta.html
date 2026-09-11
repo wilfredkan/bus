@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>附近巴士站 ETA 查詢</title>
+
+<!-- Leaflet (地圖) -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
+<style>
+  :root{
+    --primary:#d62828;
+    --primary-dark:#a91f1f;
+    --bg:#f5f6f8;
+    --card:#ffffff;
+    --border:#e2e5ea;
+    --text:#1c1f26;
+    --muted:#6b7280;
+    --kmb:#c8102e;
+    --ctb:#f7941d;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang TC","Microsoft JhengHei",sans-serif;
+    background:var(--bg);
+    color:var(--text);
+  }
+  header{
+    background:var(--primary);
+    color:#fff;
+    padding:14px 18px;
+  }
+  header h1{margin:0;font-size:18px;}
+  header p{margin:4px 0 0;font-size:12px;opacity:.9;}
+
+  main{
+    max-width:720px;
+    margin:0 auto;
+    padding:14px;
+  }
+
+  #map{
+    width:100%;
+    height:280px;
+    border-radius:10px;
+    border:1px solid var(--border);
+    background:#e9edf1;
+  }
+
+  .card{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:14px;
+    margin-top:14px;
+  }
+  .card h2{
+    margin:0 0 10px;
+    font-size:15px;
+  }
+
+  #status{
+    font-size:13px;
+    color:var(--muted);
+    margin-top:8px;
+    min-height:16px;
+  }
+  #status.error{color:var(--primary-dark);}
+
+  .stop-option{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:10px;
+    border:1px solid var(--border);
+    border-radius:8px;
+    margin-bottom:8px;
+    cursor:pointer;
+  }
+  .stop-option:hover{background:#fafafa;}
+  .stop-option input{transform:scale(1.2);}
+  .stop-option .stop-name{font-size:14px;font-weight:600;}
+  .stop-option .stop-meta{font-size:12px;color:var(--muted);}
+  .badge{
+    display:inline-block;
+    font-size:11px;
+    font-weight:700;
+    color:#fff;
+    padding:2px 6px;
+    border-radius:4px;
+    margin-right:6px;
+  }
+  .badge.kmb{background:var(--kmb);}
+  .badge.ctb{background:var(--ctb);}
+
+  #etaResult .route-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    padding:10px 0;
+    border-bottom:1px solid var(--border);
+    gap:10px;
+  }
+  #etaResult .route-row:last-child{border-bottom:none;}
+  .route-num{
+    font-weight:700;
+    font-size:15px;
+    min-width:52px;
+  }
+  .route-dest{
+    font-size:13px;
+    color:var(--muted);
+    flex:1;
+  }
+  .route-etas{
+    font-size:13px;
+    text-align:right;
+    white-space:nowrap;
+  }
+  .route-etas .soon{color:var(--primary);font-weight:700;}
+
+  button#refreshBtn{
+    background:var(--primary);
+    color:#fff;
+    border:none;
+    padding:6px 12px;
+    border-radius:6px;
+    font-size:12px;
+    cursor:pointer;
+  }
+  button#refreshBtn:disabled{opacity:.5;cursor:default;}
+
+  .hint{font-size:12px;color:var(--muted);line-height:1.6;}
+  code{background:#eef0f3;padding:1px 5px;border-radius:4px;font-size:11px;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🚌 附近巴士站 ETA 查詢</h1>
+  <p>自動偵測您的位置，找出最近的九巴 / 城巴站及即時到站時間</p>
+</header>
+
+<main>
+
+  <!-- 地圖顯示區 (Leaflet + OpenStreetMap) -->
+  <div id="map"></div>
+  <p class="hint" style="margin:6px 2px 0;">💡 定位不準/不能定位時，可直接點擊地圖上任一位置手動校正。</p>
+  <div id="status">正在初始化...</div>
+
+  <!-- 最近巴士站選擇區 -->
+  <div class="card">
+    <h2>最近的 4 個巴士站</h2>
+    <div id="stopListContainer">
+      <p class="hint">等待定位及巴士站資料載入中...</p>
+    </div>
+  </div>
+
+  <!-- 到站時間顯示區 -->
+  <div class="card" id="etaCard" style="display:none;">
+    <h2 style="display:flex;justify-content:space-between;align-items:center;">
+      <span id="etaStopTitle">到站時間</span>
+      <button id="refreshBtn">重新整理</button>
+    </h2>
+    <div id="etaResult"></div>
+  </div>
+
+  <div class="card">
+    <p class="hint">
+      本頁使用 <code>data.gov.hk</code> 的九巴 (KMB) 及城巴 (Citybus) 開放數據 API，
+      地圖則使用 <code>Leaflet.js</code> + <code>OpenStreetMap</code> 免費圖磚，
+      完全不需要申請任何 API 金鑰或綁定信用卡，開啟網頁即可直接使用。
+    </p>
+  </div>
+
+</main>
+
+<script>
+/* =========================================================
+   資料來源 (data.gov.hk 開放數據)
+   KMB 巴士站列表:  https://data.etabus.gov.hk/v1/transport/kmb/stop
+   KMB 到站時間:    https://data.etabus.gov.hk/v1/transport/kmb/stop-eta/{stop_id}
+   城巴 巴士站列表: https://rt.data.gov.hk/v2/transport/citybus/stop
+   城巴 到站時間:   https://rt.data.gov.hk/v1/transport/batch/stop-eta/CTB/{stop_id}
+   ========================================================= */
+const KMB_STOP_LIST_URL   = "https://data.etabus.gov.hk/v1/transport/kmb/stop";
+const KMB_STOP_ETA_URL    = (stopId) => `https://data.etabus.gov.hk/v1/transport/kmb/stop-eta/${stopId}`;
+const CTB_STOP_LIST_URL   = "https://rt.data.gov.hk/v2/transport/citybus/stop";
+const CTB_STOP_ETA_URL    = (stopId) => `https://rt.data.gov.hk/v1/transport/batch/stop-eta/CTB/${stopId}`;
+
+let map, userMarker, stopMarkers = [];
+let userPos = null;
+let allStops = [];          // 合併後的九巴+城巴站點清單
+let nearestStops = [];      // 最近的 4 個站
+let selectedStop = null;
+let autoRefreshTimer = null;
+
+const statusEl = document.getElementById("status");
+const stopListContainer = document.getElementById("stopListContainer");
+const etaCard = document.getElementById("etaCard");
+const etaResult = document.getElementById("etaResult");
+const etaStopTitle = document.getElementById("etaStopTitle");
+const refreshBtn = document.getElementById("refreshBtn");
+
+function setStatus(msg, isError = false) {
+  statusEl.textContent = msg;
+  statusEl.className = isError ? "error" : "";
+}
+
+/* ---------- 距離計算 (Haversine 公式，回傳公尺) ---------- */
+function getDistanceMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+/* ---------- 步驟 1：取得使用者 GPS 位置 ---------- */
+function detectUserLocation() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("此瀏覽器不支援定位功能"));
+      return;
+    }
+
+    const toLatLng = (pos) => ({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+
+    // 先嘗試高精度定位 (GPS)；若逾時或失敗，自動降級用低精度 (Wi-Fi/IP) 重試一次。
+    // 桌機/筆電沒有 GPS 硬體時，高精度定位常常會 timeout，低精度通常快很多。
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve(toLatLng(pos)),
+      (err) => {
+        if (err.code === err.TIMEOUT || err.code === err.POSITION_UNAVAILABLE) {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => resolve(toLatLng(pos)),
+            (err2) => reject(err2),
+            { enableHighAccuracy: false, timeout: 10000, maximumAge: 20000 } //timeout 20000 maximumAge 60000
+          );
+        } else {
+          reject(err); // 例如 PERMISSION_DENIED，重試也沒用
+        }
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+    );
+  });
+}
+
+/* ---------- 步驟 2：初始化地圖 (Leaflet + OpenStreetMap) ---------- */
+function initMap(center) {
+  map = L.map("map").setView([center.lat, center.lng], 16);
+
+  // OpenStreetMap 免費圖磚圖層
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> 貢獻者',
+  }).addTo(map);
+
+  // 使用者位置標記 (藍色圓點)
+  userMarker = L.circleMarker([center.lat, center.lng], {
+    radius: 8,
+    fillColor: "#1a73e8",
+    fillOpacity: 1,
+    color: "#fff",
+    weight: 2,
+  })
+    .addTo(map)
+    .bindPopup("你的位置");
+
+  // 讓使用者可以直接點地圖手動設定位置 (桌機定位不準時可自行校正)
+  map.on("click", (e) => {
+    updateLocation({ lat: e.latlng.lat, lng: e.latlng.lng });
+  });
+}
+
+/* 更新目前位置：移動地圖上的標記，並重新計算最近的巴士站
+   (定位成功、或使用者手動點地圖時都會呼叫這個函式) */
+function updateLocation(pos) {
+  userPos = pos;
+  if (userMarker) userMarker.setLatLng([pos.lat, pos.lng]);
+
+  if (allStops.length === 0) {
+    setStatus("位置已更新，巴士站資料載入完成後會自動顯示最近的站。");
+    return;
+  }
+
+  nearestStops = findNearestStops(allStops, pos, 4);
+  if (map) renderStopMarkers(nearestStops);
+  renderStopList(nearestStops);
+  setStatus(`位置已手動更新，顯示最近的 4 個巴士站（共 ${allStops.length.toLocaleString()} 個站點）。`);
+}
+
+function renderStopMarkers(stops) {
+  stopMarkers.forEach((m) => map.removeLayer(m));
+  stopMarkers = [];
+  stops.forEach((stop, idx) => {
+    const numberIcon = L.divIcon({
+      className: "stop-marker-icon",
+      html: `<div style="background:#d62828;color:#fff;font-size:12px;font-weight:700;
+                          width:22px;height:22px;border-radius:50%;display:flex;
+                          align-items:center;justify-content:center;border:2px solid #fff;
+                          box-shadow:0 1px 3px rgba(0,0,0,.4);">${idx + 1}</div>`,
+      iconSize: [22, 22],
+      iconAnchor: [11, 11],
+    });
+    const marker = L.marker([stop.lat, stop.lon], { icon: numberIcon })
+      .addTo(map)
+      .bindPopup(stop.name_tc || stop.name_en);
+    marker.on("click", () => selectStop(stop.key));
+    stopMarkers.push(marker);
+  });
+}
+
+/* ---------- 步驟 3：讀取九巴 + 城巴全部巴士站 GPS 座標 ---------- */
+async function loadAllStops() {
+
+  // 九巴 API 直接拉取[cite: 1]
+  const kmbRes = await fetch(KMB_STOP_LIST_URL).then((r) => r.json());
+  
+  // 城巴改為讀取靜態 json 檔 (或你自建的站點清單)
+  const ctbRes = await fetch("./ctb_stops.json").then((r) => r.json());
+
+  const kmbStops = (kmbRes.data || []).map((s) => ({
+    key: `KMB-${s.stop}`,
+    source: "KMB",
+    id: s.stop,
+    name_tc: s.name_tc,
+    name_en: s.name_en,
+    lat: parseFloat(s.lat),
+    lon: parseFloat(s.long),
+  }));
+
+  const ctbStops = (ctbRes.data || []).map((s) => ({
+    // 城巴 API 的站點 ID 欄位通常為 stop_id 或 stop
+    //const stopId = s.stop_id || s.stop; 
+    key: `CTB-${s.stop}`,
+    source: "CTB",
+    id: s.stop, 
+    name_tc: s.name_tc,
+    name_en: s.name_en,
+    lat: parseFloat(s.lat),
+    lon: parseFloat(s.long),    
+  }));
+
+  return kmbStops.concat(ctbStops).filter((s) => !isNaN(s.lat) && !isNaN(s.lon) && s.id);
+}
+
+/* ---------- 步驟 4：找出距離最近的 4 個站 ---------- */
+function findNearestStops(stops, pos, count = 4) {
+  return stops
+    .map((s) => ({ ...s, distance: getDistanceMeters(pos.lat, pos.lng, s.lat, s.lon) }))
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, count);
+}
+
+/* ---------- 步驟 5：用 radio button 列出最近的站 ---------- */
+function renderStopList(stops) {
+  stopListContainer.innerHTML = "";
+  stops.forEach((stop, idx) => {
+    const wrapper = document.createElement("label");
+    wrapper.className = "stop-option";
+    wrapper.innerHTML = `
+      <input type="radio" name="stopChoice" value="${stop.key}" ${idx === 0 ? "checked" : ""}>
+      <div>
+        <div class="stop-name">
+          <span class="badge ${stop.source === 'KMB' ? 'kmb' : 'ctb'}">${stop.source === 'KMB' ? '九巴' : '城巴'}</span>
+          ${stop.name_tc || stop.name_en}
+        </div>
+        <div class="stop-meta">距離約 ${Math.round(stop.distance)} 公尺</div>
+      </div>
+    `;
+    wrapper.querySelector("input").addEventListener("change", () => selectStop(stop.key));
+    stopListContainer.appendChild(wrapper);
+  });
+  // 預設選第一個(最近)的站
+  if (stops.length > 0) selectStop(stops[0].key);
+}
+
+function selectStop(key) {
+  const radio = document.querySelector(`input[name="stopChoice"][value="${key}"]`);
+  if (radio) radio.checked = true;
+  selectedStop = nearestStops.find((s) => s.key === key);
+  if (!selectedStop) return;
+  etaCard.style.display = "block";
+  etaStopTitle.textContent = `${selectedStop.name_tc || selectedStop.name_en} 到站時間`;
+  loadEtaForStop(selectedStop);
+
+  if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+  // autoRefreshTimer = setInterval(() => loadEtaForStop(selectedStop), 60000); // 每 60 秒自動更新
+}
+
+/* ---------- 步驟 6：讀取該站所有巴士的到站時間 ---------- */
+async function loadEtaForStop(stop) {
+  etaResult.innerHTML = `<p class="hint">載入到站時間中...</p>`;
+  refreshBtn.disabled = true;
+  try {
+    const rows =
+      stop.source === "KMB"
+        ? await fetchKmbEta(stop.id)
+        : await fetchCtbEta(stop.id);
+    renderEtaRows(rows);
+  } catch (err) {
+    etaResult.innerHTML = `<p class="hint">讀取到站時間失敗：${err.message}</p>`;
+  } finally {
+    refreshBtn.disabled = false;
+  }
+}
+
+async function fetchKmbEta(stopId) {
+  const res = await fetch(KMB_STOP_ETA_URL(stopId));
+  const json = await res.json();
+  const data = json.data || [];
+  // 依 路線+方向+目的地 分組
+  const grouped = {};
+  data.forEach((item) => {
+    if (!item.eta) return; // 沒有 ETA 資料的略過 (例如非服務時間)
+    const key = `${item.route}-${item.dir}-${item.dest_tc || item.dest_en}`;
+    if (!grouped[key]) {
+      grouped[key] = {
+        route: item.route,
+        dest: item.dest_tc || item.dest_en || "",
+        remark: item.rmk_tc || item.rmk_en || "",
+        etas: [],
+      };
+    }
+    grouped[key].etas.push(new Date(item.eta));
+  });
+  return Object.values(grouped).sort((a, b) => a.route.localeCompare(b.route, "zh-HK"));
+}
+
+async function fetchCtbEta(stopId) {
+  const res = await fetch(CTB_STOP_ETA_URL(stopId));
+  const json = await res.json();
+  const data = json.data || [];
+  const grouped = {};
+  data.forEach((item) => {
+    if (!item.eta) return;
+    const dest = item.dest_tc || item.dest || item.dest_en || "";
+    const key = `${item.route}-${item.dir}-${dest}`;
+    if (!grouped[key]) {
+      grouped[key] = {
+        route: item.route,
+        dest,
+        remark: item.rmk_tc || item.rmk || "",
+        etas: [],
+      };
+    }
+    grouped[key].etas.push(new Date(item.eta));
+  });
+  return Object.values(grouped).sort((a, b) => a.route.localeCompare(b.route, "zh-HK"));
+}
+
+function renderEtaRows(rows) {
+  if (rows.length === 0) {
+    etaResult.innerHTML = `<p class="hint">目前沒有到站資料（可能已收班或暫無班次）。</p>`;
+    return;
+  }
+  const now = new Date();
+  etaResult.innerHTML = "";
+  rows.forEach((row) => {
+    const etaTexts = row.etas
+      .slice(0, 3)
+      .map((t) => {
+        const mins = Math.round((t - now) / 60000);
+        const timeStr = t.toLocaleTimeString("zh-HK", { hour: "2-digit", minute: "2-digit" });
+        if (mins <= 0) return `<span class="soon">即將到達</span>`;
+        if (mins <= 2) return `<span class="soon">${mins} 分鐘 (${timeStr})</span>`;
+        return `${mins} 分鐘 (${timeStr})`;
+      });
+    const div = document.createElement("div");
+    div.className = "route-row";
+    div.innerHTML = `
+      <div class="route-num">${row.route}</div>
+      <div class="route-dest">往 ${row.dest}${row.remark ? ` · ${row.remark}` : ""}</div>
+      <div class="route-etas">${etaTexts.join("<br>")}</div>
+    `;
+    etaResult.appendChild(div);
+  });
+}
+
+refreshBtn.addEventListener("click", () => {
+  if (selectedStop) loadEtaForStop(selectedStop);
+});
+
+/* ---------- 主流程 ---------- */
+const DEFAULT_CENTER = { lat: 22.2793, lng: 114.1628 }; // 定位失敗時的預設中心點 (香港中環)
+
+async function main() {
+  setStatus("正在取得您目前的 GPS 位置...");
+  try {
+    userPos = await detectUserLocation();
+  } catch (err) {
+    console.error(err);
+    let hint = "你仍可以在地圖上點一下手動設定位置。";
+    if (err.code === 1) hint = "定位權限被拒絕，你可以在地圖上點一下手動設定位置。";
+    else if (err.code === 2) hint = "無法取得目前位置，你可以在地圖上點一下手動設定位置。";
+    else if (err.code === 3) hint = "定位逾時，你可以在地圖上點一下手動設定位置。";
+    setStatus(`自動定位失敗：${err.message || "未知錯誤"}。${hint}`, true);
+    userPos = DEFAULT_CENTER;
+  }
+
+  setStatus("正在載入地圖...");
+  try {
+    initMap(userPos);
+  } catch (mapErr) {
+    document.getElementById("map").innerHTML =
+      `<div style="padding:14px;font-size:13px;color:#6b7280;">地圖無法顯示：${mapErr.message}</div>`;
+  }
+
+  try {
+    setStatus("正在讀取九巴 / 城巴巴士站資料 (可能需要幾秒)...");
+    allStops = await loadAllStops();
+
+    updateLocation(userPos);
+    setStatus(`已找到 ${allStops.length.toLocaleString()} 個巴士站，顯示最近的 4 個。（提示：可點擊地圖手動校正位置）`);
+  } catch (err) {
+    console.error(err);
+    setStatus(`讀取巴士站資料失敗：${err.message}。請檢查網路連線後重新整理頁面。`, true);
+  }
+}
+
+main();
+</script>
+
+</body>
+</html>
