@@ -135,13 +135,31 @@
 
   .hint{font-size:12px;color:var(--muted);line-height:1.6;}
   code{background:#eef0f3;padding:1px 5px;border-radius:4px;font-size:11px;}
+
+  #langToggleBtn {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+  }
+  #langToggleBtn:hover {
+    background: rgba(255, 255, 255, 0.35);
+}  
 </style>
 </head>
 <body>
 
-<header>
-  <h1>🚌 附近巴士站 ETA 查詢</h1>
-  <p>自動偵測您的位置，找出最近的九巴 / 城巴站及即時到站時間</p>
+<header style="display:flex; justify-content:space-between; align-items:center;">
+ <div>
+  <h1 id="i18n-title">🚌 附近巴士站 ETA 查詢</h1>
+  <p id="i18n-subtitle">自動偵測您的位置，找出最近的九巴 / 城巴站及即時到站時間</p>
+ </div>
+ <button id="langToggleBtn" onclick="toggleLanguage()">中/Eng</button>
 </header>
 
 <main>
@@ -197,6 +215,7 @@ let allStops = [];          // 合併後的九巴+城巴站點清單
 let nearestStops = [];      // 最近的 4 個站
 let selectedStop = null;
 let autoRefreshTimer = null;
+let currentLang = 'tc'; // 預設為繁體中文，可切換為 'en'
 
 const statusEl = document.getElementById("status");
 const stopListContainer = document.getElementById("stopListContainer");
@@ -204,6 +223,49 @@ const etaCard = document.getElementById("etaCard");
 const etaResult = document.getElementById("etaResult");
 const etaStopTitle = document.getElementById("etaStopTitle");
 const refreshBtn = document.getElementById("refreshBtn");
+const translations = {
+  tc: {
+    title: "🚌 附近巴士站 ETA 查詢",
+    subtitle: "自動偵測您的位置，找出最近的九巴 / 城巴站及即時到站時間",
+    hintMap: "💡 定位不準/不能定位時，可直接點擊地圖上任一位置手動校正。",
+    cardStops: "最近的 4 個巴士站",
+    cardEta: "到站時間",
+    refresh: "重新整理",
+    kmb: "九巴",
+    ctb: "城巴",
+    dist: "距離約",
+    meters: "公尺",
+    boundFor: "往"
+  },
+  en: {
+    title: "🚌 Nearby Bus Stop ETA Search",
+    subtitle: "Auto-detect location to find nearby KMB / CTB stops and real-time ETA",
+    hintMap: "💡 If location is inaccurate, tap anywhere on the map to adjust manually.",
+    cardStops: "Nearest 4 Bus Stops",
+    cardEta: "Arrival Times",
+    refresh: "Refresh",
+    kmb: "KMB",
+    ctb: "CTB",
+    dist: "Distance approx.",
+    meters: "m",
+    boundFor: "To "
+  }
+};
+
+function toggleLanguage() {
+  currentLang = currentLang === 'tc' ? 'en' : 'tc';
+  
+  // 更新介面文字
+  const t = translations[currentLang];
+  document.getElementById('i18n-title').textContent = t.title;
+  document.getElementById('i18n-subtitle').textContent = t.subtitle;
+  document.getElementById('refreshBtn').textContent = t.refresh;
+  
+  // 重新渲染當前站點與 ETA 列表以載入對應語言
+  if (userPos && allStops.length > 0) {
+    renderStopList(nearestStops);
+  }
+}
 
 function setStatus(msg, isError = false) {
   statusEl.textContent = msg;
@@ -362,6 +424,9 @@ function findNearestStops(stops, pos, count = 4) {
 
 /* ---------- 步驟 5：用 radio button 列出最近的站 ---------- */
 function renderStopList(stops) {
+  const name = currentLang === 'en' ? (stop.name_en || stop.name_tc) : (stop.name_tc || stop.name_en);
+  const badgeText = stop.source === 'KMB' ? translations[currentLang].kmb : translations[currentLang].ctb;
+  const distText = `${translations[currentLang].dist} ${Math.round(stop.distance)} ${translations[currentLang].meters}`;
   stopListContainer.innerHTML = "";
   stops.forEach((stop, idx) => {
     const wrapper = document.createElement("label");
@@ -458,6 +523,8 @@ async function fetchCtbEta(stopId) {
 }
 
 function renderEtaRows(rows) {
+  const destName = row.dest; // API 回傳時已處理語系
+  const prefix = translations[currentLang].boundFor; // 將 "往 X" 改為 `${prefix}${destName}`
   if (rows.length === 0) {
     etaResult.innerHTML = `<p class="hint">目前沒有到站資料（可能已收班或暫無班次）。</p>`;
     return;
