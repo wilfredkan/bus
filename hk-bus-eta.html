@@ -346,7 +346,7 @@ async function loadAllStops() {
     name_tc: s.name_tc,
     name_en: s.name_en,
     lat: parseFloat(s.lat),
-    lon: parseFloat(s.long),    
+    lon: parseFloat(s.long || s.lon),    
   }));
 
   return kmbStops.concat(ctbStops).filter((s) => !isNaN(s.lat) && !isNaN(s.lon) && s.id);
