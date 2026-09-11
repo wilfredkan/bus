@@ -424,11 +424,11 @@ function findNearestStops(stops, pos, count = 4) {
 
 /* ---------- 步驟 5：用 radio button 列出最近的站 ---------- */
 function renderStopList(stops) {
-  const name = currentLang === 'en' ? (stop.name_en || stop.name_tc) : (stop.name_tc || stop.name_en);
-  const badgeText = stop.source === 'KMB' ? translations[currentLang].kmb : translations[currentLang].ctb;
-  const distText = `${translations[currentLang].dist} ${Math.round(stop.distance)} ${translations[currentLang].meters}`;
   stopListContainer.innerHTML = "";
   stops.forEach((stop, idx) => {
+    const name = currentLang === 'en' ? (stop.name_en || stop.name_tc) : (stop.name_tc || stop.name_en);
+    const badgeText = stop.source === 'KMB' ? translations[currentLang].kmb : translations[currentLang].ctb;
+    const distText = `${translations[currentLang].dist} ${Math.round(stop.distance)} ${translations[currentLang].meters}`;
     const wrapper = document.createElement("label");
     wrapper.className = "stop-option";
     wrapper.innerHTML = `
@@ -523,15 +523,15 @@ async function fetchCtbEta(stopId) {
 }
 
 function renderEtaRows(rows) {
-  const destName = row.dest; // API 回傳時已處理語系
-  const prefix = translations[currentLang].boundFor; // 將 "往 X" 改為 `${prefix}${destName}`
   if (rows.length === 0) {
     etaResult.innerHTML = `<p class="hint">目前沒有到站資料（可能已收班或暫無班次）。</p>`;
     return;
   }
   const now = new Date();
+  const prefix = translations[currentLang].boundFor; // 將 "往 X" 改為 `${prefix}${destName}`
   etaResult.innerHTML = "";
   rows.forEach((row) => {
+    const destName = row.dest; // API 回傳時已處理語系
     const etaTexts = row.etas
       .slice(0, 3)
       .map((t) => {
