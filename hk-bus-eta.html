@@ -135,31 +135,13 @@
 
   .hint{font-size:12px;color:var(--muted);line-height:1.6;}
   code{background:#eef0f3;padding:1px 5px;border-radius:4px;font-size:11px;}
-
-  #langToggleBtn {
-    background: rgba(255, 255, 255, 0.2);
-    color: #fff;
-    border: 1px solid rgba(255, 255, 255, 0.6);
-    padding: 6px 12px;
-    border-radius: 20px;
-    font-size: 13px;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 0.2s ease;
-  }
-  #langToggleBtn:hover {
-    background: rgba(255, 255, 255, 0.35);
-}  
 </style>
 </head>
 <body>
 
-<header style="display:flex; justify-content:space-between; align-items:center;">
- <div>
-  <h1 id="i18n-title">🚌 附近巴士站 ETA 查詢</h1>
-  <p id="i18n-subtitle">自動偵測您的位置，找出最近的九巴 / 城巴站及即時到站時間</p>
- </div>
- <button id="langToggleBtn" onclick="toggleLanguage()">中/Eng</button>
+<header>
+  <h1>🚌 附近巴士站 ETA 查詢</h1>
+  <p>自動偵測您的位置，找出最近的九巴 / 城巴站及即時到站時間</p>
 </header>
 
 <main>
@@ -215,7 +197,6 @@ let allStops = [];          // 合併後的九巴+城巴站點清單
 let nearestStops = [];      // 最近的 4 個站
 let selectedStop = null;
 let autoRefreshTimer = null;
-let currentLang = 'tc'; // 預設為繁體中文，可切換為 'en'
 
 const statusEl = document.getElementById("status");
 const stopListContainer = document.getElementById("stopListContainer");
@@ -223,49 +204,6 @@ const etaCard = document.getElementById("etaCard");
 const etaResult = document.getElementById("etaResult");
 const etaStopTitle = document.getElementById("etaStopTitle");
 const refreshBtn = document.getElementById("refreshBtn");
-const translations = {
-  tc: {
-    title: "🚌 附近巴士站 ETA 查詢",
-    subtitle: "自動偵測您的位置，找出最近的九巴 / 城巴站及即時到站時間",
-    hintMap: "💡 定位不準/不能定位時，可直接點擊地圖上任一位置手動校正。",
-    cardStops: "最近的 4 個巴士站",
-    cardEta: "到站時間",
-    refresh: "重新整理",
-    kmb: "九巴",
-    ctb: "城巴",
-    dist: "距離約",
-    meters: "公尺",
-    boundFor: "往"
-  },
-  en: {
-    title: "🚌 Nearby Bus Stop ETA Search",
-    subtitle: "Auto-detect location to find nearby KMB / CTB stops and real-time ETA",
-    hintMap: "💡 If location is inaccurate, tap anywhere on the map to adjust manually.",
-    cardStops: "Nearest 4 Bus Stops",
-    cardEta: "Arrival Times",
-    refresh: "Refresh",
-    kmb: "KMB",
-    ctb: "CTB",
-    dist: "Distance approx.",
-    meters: "m",
-    boundFor: "To "
-  }
-};
-
-function toggleLanguage() {
-  currentLang = currentLang === 'tc' ? 'en' : 'tc';
-  
-  // 更新介面文字
-  const t = translations[currentLang];
-  document.getElementById('i18n-title').textContent = t.title;
-  document.getElementById('i18n-subtitle').textContent = t.subtitle;
-  document.getElementById('refreshBtn').textContent = t.refresh;
-  
-  // 重新渲染當前站點與 ETA 列表以載入對應語言
-  if (userPos && allStops.length > 0) {
-    renderStopList(nearestStops);
-  }
-}
 
 function setStatus(msg, isError = false) {
   statusEl.textContent = msg;
@@ -288,6 +226,16 @@ function getDistanceMeters(lat1, lon1, lat2, lon2) {
 /* ---------- 步驟 1：取得使用者 GPS 位置 ---------- */
 function detectUserLocation() {
   return new Promise((resolve, reject) => {
+    // 檢查是否為流動裝置 (手機 / 平板)
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+    // 如果不是手機/平板 (即為 Desktop)，直接傳回預設座標
+    if (!isMobile) {
+      console.log("偵測到桌上型電腦/筆電，自動採用預設位置。");
+      resolve(DEFAULT_CENTER);
+      return;
+    }
+
     if (!navigator.geolocation) {
       reject(new Error("此瀏覽器不支援定位功能"));
       return;
@@ -295,8 +243,6 @@ function detectUserLocation() {
 
     const toLatLng = (pos) => ({ lat: pos.coords.latitude, lng: pos.coords.longitude });
 
-    // 先嘗試高精度定位 (GPS)；若逾時或失敗，自動降級用低精度 (Wi-Fi/IP) 重試一次。
-    // 桌機/筆電沒有 GPS 硬體時，高精度定位常常會 timeout，低精度通常快很多。
     navigator.geolocation.getCurrentPosition(
       (pos) => resolve(toLatLng(pos)),
       (err) => {
@@ -304,10 +250,10 @@ function detectUserLocation() {
           navigator.geolocation.getCurrentPosition(
             (pos) => resolve(toLatLng(pos)),
             (err2) => reject(err2),
-            { enableHighAccuracy: false, timeout: 10000, maximumAge: 20000 } //timeout 20000 maximumAge 60000
+            { enableHighAccuracy: false, timeout: 10000, maximumAge: 20000 }
           );
         } else {
-          reject(err); // 例如 PERMISSION_DENIED，重試也沒用
+          reject(err);
         }
       },
       { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
@@ -319,13 +265,11 @@ function detectUserLocation() {
 function initMap(center) {
   map = L.map("map").setView([center.lat, center.lng], 16);
 
-  // OpenStreetMap 免費圖磚圖層
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> 貢獻者',
   }).addTo(map);
 
-  // 使用者位置標記 (藍色圓點)
   userMarker = L.circleMarker([center.lat, center.lng], {
     radius: 8,
     fillColor: "#1a73e8",
@@ -336,14 +280,11 @@ function initMap(center) {
     .addTo(map)
     .bindPopup("你的位置");
 
-  // 讓使用者可以直接點地圖手動設定位置 (桌機定位不準時可自行校正)
   map.on("click", (e) => {
     updateLocation({ lat: e.latlng.lat, lng: e.latlng.lng });
   });
 }
 
-/* 更新目前位置：移動地圖上的標記，並重新計算最近的巴士站
-   (定位成功、或使用者手動點地圖時都會呼叫這個函式) */
 function updateLocation(pos) {
   userPos = pos;
   if (userMarker) userMarker.setLatLng([pos.lat, pos.lng]);
@@ -382,11 +323,7 @@ function renderStopMarkers(stops) {
 
 /* ---------- 步驟 3：讀取九巴 + 城巴全部巴士站 GPS 座標 ---------- */
 async function loadAllStops() {
-
-  // 九巴 API 直接拉取[cite: 1]
   const kmbRes = await fetch(KMB_STOP_LIST_URL).then((r) => r.json());
-  
-  // 城巴改為讀取靜態 json 檔 (或你自建的站點清單)
   const ctbRes = await fetch("./ctb_stops.json").then((r) => r.json());
 
   const kmbStops = (kmbRes.data || []).map((s) => ({
@@ -400,8 +337,6 @@ async function loadAllStops() {
   }));
 
   const ctbStops = (Array.isArray(ctbRes) ? ctbRes : ctbRes.data || []).map((s) => ({
-    // 城巴 API 的站點 ID 欄位通常為 stop_id 或 stop
-    //const stopId = s.stop_id || s.stop; 
     key: `CTB-${s.stop}`,
     source: "CTB",
     id: s.stop, 
@@ -426,9 +361,6 @@ function findNearestStops(stops, pos, count = 4) {
 function renderStopList(stops) {
   stopListContainer.innerHTML = "";
   stops.forEach((stop, idx) => {
-    const name = currentLang === 'en' ? (stop.name_en || stop.name_tc) : (stop.name_tc || stop.name_en);
-    const badgeText = stop.source === 'KMB' ? translations[currentLang].kmb : translations[currentLang].ctb;
-    const distText = `${translations[currentLang].dist} ${Math.round(stop.distance)} ${translations[currentLang].meters}`;
     const wrapper = document.createElement("label");
     wrapper.className = "stop-option";
     wrapper.innerHTML = `
@@ -444,7 +376,6 @@ function renderStopList(stops) {
     wrapper.querySelector("input").addEventListener("change", () => selectStop(stop.key));
     stopListContainer.appendChild(wrapper);
   });
-  // 預設選第一個(最近)的站
   if (stops.length > 0) selectStop(stops[0].key);
 }
 
@@ -458,7 +389,6 @@ function selectStop(key) {
   loadEtaForStop(selectedStop);
 
   if (autoRefreshTimer) clearInterval(autoRefreshTimer);
-  // autoRefreshTimer = setInterval(() => loadEtaForStop(selectedStop), 60000); // 每 60 秒自動更新
 }
 
 /* ---------- 步驟 6：讀取該站所有巴士的到站時間 ---------- */
@@ -482,10 +412,9 @@ async function fetchKmbEta(stopId) {
   const res = await fetch(KMB_STOP_ETA_URL(stopId));
   const json = await res.json();
   const data = json.data || [];
-  // 依 路線+方向+目的地 分組
   const grouped = {};
   data.forEach((item) => {
-    if (!item.eta) return; // 沒有 ETA 資料的略過 (例如非服務時間)
+    if (!item.eta) return;
     const key = `${item.route}-${item.dir}-${item.dest_tc || item.dest_en}`;
     if (!grouped[key]) {
       grouped[key] = {
@@ -528,10 +457,8 @@ function renderEtaRows(rows) {
     return;
   }
   const now = new Date();
-  const prefix = translations[currentLang].boundFor; // 將 "往 X" 改為 `${prefix}${destName}`
   etaResult.innerHTML = "";
   rows.forEach((row) => {
-    const destName = row.dest; // API 回傳時已處理語系
     const etaTexts = row.etas
       .slice(0, 3)
       .map((t) => {
@@ -557,10 +484,10 @@ refreshBtn.addEventListener("click", () => {
 });
 
 /* ---------- 主流程 ---------- */
-const DEFAULT_CENTER = { lat: 22.2793, lng: 114.1628 }; // 定位失敗時的預設中心點 (香港中環)
+const DEFAULT_CENTER = { lat: 22.3020, lng: 114.1743 }; //天文台
 
 async function main() {
-  setStatus("正在取得您目前的 GPS 位置...");
+  setStatus("使用移動裝置會取得您目前的 GPS 位置，桌面電腦則定位天文台...");
   try {
     userPos = await detectUserLocation();
   } catch (err) {
