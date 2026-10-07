@@ -349,13 +349,11 @@ const fallbackStations = {
     ],
 
     SIL: [
-        ["SOU","南朗山"],
+	["ADM","金鐘"],
+	["OCP","海洋公園"],
         ["WCH","黃竹坑"],
-        ["OCP","利東"],
-        ["SOH","海怡半島"],
-        ["LET","利東"],
-        ["ADM","金鐘"],
-        ["OCE","海洋公園"]
+	["LET","利東"],
+        ["SOH","海怡半島"]
     ],
 
     TWL: [
@@ -365,7 +363,7 @@ const fallbackStations = {
         ["JOR","佐敦"],
         ["YMT","油麻地"],
         ["MOK","旺角"],
-        ["PRC","太子"],
+        ["PRE","太子"],
         ["SSP","深水埗"],
         ["CSW","長沙灣"],
         ["LCK","荔枝角"],
@@ -373,8 +371,8 @@ const fallbackStations = {
         ["LAK","荔景"],
         ["KWF","葵芳"],
         ["KWH","葵興"],
-        ["KWC","大窩口"],
-        ["TWH","荃灣"]
+        ["TWH","大窩口"],
+        ["TSW","荃灣"]
     ],
 
     ISL: [
@@ -402,7 +400,7 @@ const fallbackStations = {
         ["HOM","何文田"],
         ["YMT","油麻地"],
         ["MOK","旺角"],
-        ["PRC","太子"],
+        ["PRE","太子"],
         ["SKM","石硤尾"],
         ["KOT","九龍塘"],
         ["LOF","樂富"],
@@ -422,6 +420,24 @@ const fallbackStations = {
         ["DIS","迪士尼"]
     ]
 };
+
+function getStationName(code) {
+
+    for (const line in fallbackStations) {
+
+        const station =
+            fallbackStations[line].find(
+                item => item[0] === code
+            );
+
+        if (station) {
+            return station[1];
+        }
+    }
+
+    // 如果找不到，就顯示原本的代碼
+    return code;
+}
 
 
 /*
@@ -454,198 +470,9 @@ lineSelect.addEventListener("change", async () => {
 
     const line = lineSelect.value;
 
-    stationSelect.innerHTML =
-        '<option value="">請選擇車站</option>';
-
-    stationSelect.disabled = true;
-
-    hideResult();
-
-    if (!line) {
-        return;
-    }
-
-    /*
-     * 優先嘗試讀取港鐵公開 CSV
-     */
-    try {
-
-        const stations = await loadStationsFromCSV(line);
-
-        if (stations.length > 0) {
-            populateStations(stations);
-            return;
-        }
-
-    } catch (error) {
-
-        console.warn(
-            "CSV 載入失敗，使用備用車站資料。",
-            error
-        );
-    }
-
-    /*
-     * CSV 無法使用時，使用內置資料
-     */
-    populateStations(
-        fallbackStations[line] || []
-    );
+    populateStations(line);
+    
 });
-
-
-/*
- * ============================================================
- * 從 MTR Open Data CSV 讀取車站
- * ============================================================
- */
-
-async function loadStationsFromCSV(line) {
-
-    const url =
-        "https://opendata.mtr.com.hk/data/mtr_lines_and_stations.csv";
-
-    const response = await fetch(url);
-
-    if (!response.ok) {
-        throw new Error(
-            "無法取得 MTR station CSV"
-        );
-    }
-
-    const csv = await response.text();
-
-    const rows = parseCSV(csv);
-
-    if (!rows.length) {
-        return [];
-    }
-
-    /*
-     * 嘗試尋找欄位名稱
-     */
-    const headers = rows[0].map(
-        h => h.trim().toLowerCase()
-    );
-
-    const lineIndex =
-        headers.findIndex(h =>
-            h.includes("line")
-        );
-
-    const stationIndex =
-        headers.findIndex(h =>
-            h.includes("station") &&
-            (h.includes("code") || h.includes("id"))
-        );
-
-    const nameTCIndex =
-        headers.findIndex(h =>
-            h.includes("name") &&
-            (h.includes("tc") ||
-             h.includes("chi") ||
-             h.includes("chinese"))
-        );
-
-    /*
-     * 如果 CSV 格式與預期不同，
-     * 回傳空陣列，交由 fallbackStations 處理。
-     */
-    if (
-        lineIndex < 0 ||
-        stationIndex < 0 ||
-        nameTCIndex < 0
-    ) {
-        return [];
-    }
-
-    const result = [];
-
-    for (let i = 1; i < rows.length; i++) {
-
-        const row = rows[i];
-
-        if (
-            row[lineIndex] &&
-            row[lineIndex].trim() === line &&
-            row[stationIndex]
-        ) {
-
-            result.push([
-                row[stationIndex].trim(),
-                row[nameTCIndex]
-                    ? row[nameTCIndex].trim()
-                    : row[stationIndex].trim()
-            ]);
-        }
-    }
-
-    return result;
-}
-
-
-/*
- * ============================================================
- * 簡單 CSV parser
- * ============================================================
- */
-
-function parseCSV(text) {
-
-    const rows = [];
-
-    let row = [];
-    let cell = "";
-    let insideQuotes = false;
-
-    for (let i = 0; i < text.length; i++) {
-
-        const char = text[i];
-        const next = text[i + 1];
-
-        if (char === '"' && insideQuotes && next === '"') {
-
-            cell += '"';
-            i++;
-
-        } else if (char === '"') {
-
-            insideQuotes = !insideQuotes;
-
-        } else if (char === "," && !insideQuotes) {
-
-            row.push(cell);
-            cell = "";
-
-        } else if (
-            (char === "\n" || char === "\r") &&
-            !insideQuotes
-        ) {
-
-            if (char === "\r" && next === "\n") {
-                i++;
-            }
-
-            row.push(cell);
-            rows.push(row);
-
-            row = [];
-            cell = "";
-
-        } else {
-
-            cell += char;
-        }
-    }
-
-    if (cell || row.length) {
-        row.push(cell);
-        rows.push(row);
-    }
-
-    return rows;
-}
-
 
 /*
  * ============================================================
@@ -657,6 +484,8 @@ function populateStations(stations) {
 
     stationSelect.innerHTML =
         '<option value="">請選擇車站</option>';
+
+    const stations = fallbackStations[line] || [];
 
     stations.forEach(([code, name]) => {
 
@@ -997,7 +826,7 @@ function createTrainElement(train) {
 
             <div>
                 <div class="destination">
-                    前往 ${escapeHTML(destination)}
+                    前往 ${escapeHTML(getStationName(destination))}
                 </div>
 
                 <div class="platform">
